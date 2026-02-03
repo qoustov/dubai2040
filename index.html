@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dubai Vision 2040 | Precise Masterplan</title>
+    <title>Dubai Vision 2040 | Precise View</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
@@ -15,18 +15,19 @@
             background: rgba(255, 255, 255, 0.95); outline: none; box-shadow: 0 8px 20px rgba(0,0,0,0.4);
         }
 
+        /* Clean Tooltip - No background, just gold text */
         .community-label {
-            background: rgba(15, 15, 15, 0.9) !important; color: #c1a35f !important;
-            border: 1px solid #c1a35f !important; padding: 6px 12px !important;
-            border-radius: 4px; font-size: 11px !important; font-weight: bold !important;
-            text-transform: uppercase;
+            background: none !important; color: #fff !important;
+            border: none !important; font-weight: bold !important;
+            text-shadow: 2px 2px 4px #000; font-size: 12px !important;
+            box-shadow: none !important;
         }
     </style>
 </head>
 <body>
 
     <div class="search-container">
-        <input type="text" id="communitySearch" placeholder="Search Plot or Project...">
+        <input type="text" id="communitySearch" placeholder="Search Plot...">
     </div>
     <div id="map"></div>
 
@@ -38,28 +39,35 @@
         L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}').addTo(map);
 
         const defaultStyle = {
-            color: "#c1a35f", weight: 1.5, fillColor: "#c1a35f", fillOpacity: 0.15, dashArray: '3'
+            color: "#c1a35f", weight: 1, fillColor: "#c1a35f", fillOpacity: 0.1, dashArray: ''
         };
 
         const hoverStyle = {
-            color: "#fff", weight: 3, fillColor: "#c1a35f", fillOpacity: 0.5, dashArray: ''
+            color: "#00ffff", weight: 3, fillColor: "#00ffff", fillOpacity: 0.4, dashArray: ''
         };
 
         let futureLayer = L.geoJSON(ddaData, {
             style: defaultStyle,
             onEachFeature: function(feature, layer) {
                 const name = feature.properties.ProjectName || feature.properties.CommunityName || "DDA Plot";
-                layer.bindTooltip(name, { sticky: true, className: 'community-label' });
+                
+                // Tooltip only appears on hover now (removed 'permanent' or 'sticky' issues)
+                layer.bindTooltip(name, { 
+                    direction: 'top', 
+                    className: 'community-label',
+                    opacity: 0.9 
+                });
 
                 layer.on({
                     mouseover: (e) => {
-                        // CRITICAL: We only set style for 'e.target' (the specific block touched)
                         const target = e.target;
+                        // Force only the single polygon under the mouse to change
                         target.setStyle(hoverStyle);
-                        target.bringToFront();
+                        if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+                            target.bringToFront();
+                        }
                     },
                     mouseout: (e) => {
-                        // CRITICAL: We only reset the specific block the mouse left
                         futureLayer.resetStyle(e.target);
                     },
                     click: (e) => {
@@ -69,23 +77,17 @@
             }
         }).addTo(map);
 
-        // Search Logic: Still zooms to the specific plot found
+        // Search logic zooms to the specific plot found
         document.getElementById('communitySearch').addEventListener('input', function(e) {
             const query = e.target.value.toLowerCase().trim();
-            
-            // Reset everything first
             futureLayer.eachLayer(l => futureLayer.resetStyle(l));
             
             if (query.length < 3) return;
 
             futureLayer.eachLayer(function(layer) {
                 const p = layer.feature.properties;
-                const isMatch = (p.ProjectName || "").toLowerCase().includes(query) || 
-                                (p.CommunityName || "").toLowerCase().includes(query);
-                
-                if (isMatch) {
+                if ((p.ProjectName || "").toLowerCase().includes(query)) {
                     layer.setStyle(hoverStyle);
-                    // Just zoom to the very first match to avoid confusion
                     map.flyToBounds(layer.getBounds(), { padding: [150, 150] });
                 }
             });
