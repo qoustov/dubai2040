@@ -3,22 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dubai 2040 | Precision Portal</title>
+    <title>Dubai Vision 2040 | Precision Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #000; font-family: 'Segoe UI', sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #000; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
         #map { width: 100%; height: 100vh; }
 
-        /* UI Panel Styling */
+        /* Premium Switcher Panel */
         .ui-panel {
             position: absolute; top: 20px; right: 20px; z-index: 1000;
             background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px);
             padding: 15px; border-radius: 12px; border: 1px solid #c1a35f;
-            color: white; width: 180px; pointer-events: auto;
+            color: white; width: 180px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
         .switch-container { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; font-size: 13px; }
         
-        /* Toggle Switch */
+        /* Custom Toggle Switch */
         .switch { position: relative; display: inline-block; width: 44px; height: 20px; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 20px; }
@@ -26,17 +26,19 @@
         input:checked + .slider { background-color: #c1a35f; }
         input:checked + .slider:before { transform: translateX(24px); }
 
+        /* Precision Tooltip */
         .community-label {
             background: rgba(0,0,0,0.9) !important; color: #fff !important;
-            border: 1px solid #c1a35f !important; padding: 4px 8px !important;
+            border: 1px solid #c1a35f !important; padding: 5px 10px !important;
             font-size: 11px !important; pointer-events: none !important;
+            box-shadow: 0 0 15px rgba(193, 163, 95, 0.4);
         }
     </style>
 </head>
 <body>
 
     <div class="ui-panel">
-        <h3 style="margin:0; font-size:14px; color:#c1a35f;">VISION 2040</h3>
+        <h3 style="margin:0; font-size:14px; color:#c1a35f; letter-spacing: 1px;">VISION 2040</h3>
         <div class="switch-container">
             <span>Overlay</span>
             <label class="switch">
@@ -52,40 +54,76 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        const map = L.map('map', { zoomControl: false }).setView([25.02, 55.15], 11);
-        L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}').addTo(map);
+        // 1. Initialize Map
+        const map = L.map('map', { 
+            zoomControl: false,
+            maxBoundsViscosity: 1.0 
+        }).setView([25.02, 55.15], 11);
 
+        // Satellite Layer
+        const satellite = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}').addTo(map);
+
+        // 2. Data Exploder: This manually breaks apart MultiPolygons into separate Features
+        // This prevents "Dubai Land" from lighting up as one massive group.
+        function explodeGeoJSON(data) {
+            let explodedFeatures = [];
+            data.features.forEach(feature => {
+                if (feature.geometry.type === "MultiPolygon") {
+                    feature.geometry.coordinates.forEach(polygonCoords => {
+                        explodedFeatures.push({
+                            type: "Feature",
+                            properties: { ...feature.properties },
+                            geometry: { type: "Polygon", coordinates: polygonCoords }
+                        });
+                    });
+                } else {
+                    explodedFeatures.push(feature);
+                }
+            });
+            return { type: "FeatureCollection", features: explodedFeatures };
+        }
+
+        const precisionData = explodeGeoJSON(ddaData);
+
+        // 3. Layer Styles
         const defaultStyle = { color: "#c1a35f", weight: 1, fillColor: "#c1a35f", fillOpacity: 0.15 };
         const hoverStyle = { color: "#fff", weight: 3, fillColor: "#c1a35f", fillOpacity: 0.5 };
 
         let currentHighlightedLayer = null;
 
-        // Create the GeoJSON Layer
-        const futureLayer = L.geoJSON(ddaData, {
+        // 4. Create the Interactive Layer
+        const futureLayer = L.geoJSON(precisionData, {
             style: defaultStyle,
             onEachFeature: function(feature, layer) {
-                layer.bindTooltip(feature.properties.ProjectName || "DDA Area", { 
+                // Use ProjectName from your JS file properties
+                const name = feature.properties.ProjectName || "DDA Area";
+                layer.bindTooltip(name, { 
                     sticky: true, 
-                    className: 'community-label' 
+                    direction: 'auto',
+                    className: 'community-label',
+                    opacity: 1
                 });
 
-                // USE THE SURGICAL PRECISION LOGIC HERE
+                // Precision Mouse Control
                 layer.on('mousemove', function(e) {
                     if (currentHighlightedLayer === layer) return;
 
+                    // Instantly reset the previous highlight
                     if (currentHighlightedLayer) {
                         futureLayer.resetStyle(currentHighlightedLayer);
                     }
 
+                    // Highlight only the single shape directly under mouse
                     this.setStyle(hoverStyle);
                     this.bringToFront();
                     currentHighlightedLayer = this;
+                    
                     L.DomEvent.stopPropagation(e);
                 });
             }
         }).addTo(map);
 
-        // Map-wide mousemove to clear highlight when touching empty space
+        // 5. Global Reset: Clears highlight when mouse hits the "Desert"
         map.on('mousemove', function(e) {
             if (currentHighlightedLayer) {
                 futureLayer.resetStyle(currentHighlightedLayer);
@@ -93,15 +131,19 @@
             }
         });
 
-        // Switcher Logic
-        document.getElementById('visionToggle').addEventListener('change', function(e) {
+        // 6. Switcher Logic
+        const toggle = document.getElementById('visionToggle');
+        toggle.addEventListener('change', function(e) {
             if(e.target.checked) {
                 map.addLayer(futureLayer);
+                document.getElementById('map').style.filter = "saturate(1.1)";
             } else {
                 map.removeLayer(futureLayer);
+                document.getElementById('map').style.filter = "none";
                 if (currentHighlightedLayer) currentHighlightedLayer = null;
             }
         });
+
     </script>
 </body>
 </html>
