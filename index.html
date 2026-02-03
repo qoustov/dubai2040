@@ -3,91 +3,93 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dubai Vision 2040 | Interactive Portal</title>
+    <title>Dubai Vision 2040 | Precise Masterplan</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
         #map { width: 100%; height: 100vh; }
-        .search-container { position: absolute; top: 20px; left: 20px; z-index: 1000; width: 300px; }
+        
+        .search-container { position: absolute; top: 20px; left: 20px; z-index: 1000; width: 320px; }
         #communitySearch {
-            width: 100%; padding: 12px 20px; border-radius: 25px; border: 1px solid #c1a35f;
-            background: rgba(255, 255, 255, 0.95); outline: none; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            width: 100%; padding: 14px 20px; border-radius: 30px; border: 1px solid #c1a35f;
+            background: rgba(255, 255, 255, 0.95); outline: none; box-shadow: 0 8px 20px rgba(0,0,0,0.4);
         }
+
         .community-label {
-            background: rgba(0, 0, 0, 0.85) !important; color: #c1a35f !important;
-            border: 1px solid #c1a35f !important; font-weight: bold !important;
-            padding: 5px 10px !important; border-radius: 4px; font-size: 11px !important;
-        }
-        #debug-log {
-            position: absolute; bottom: 10px; left: 10px; z-index: 2000;
-            background: rgba(0,0,0,0.7); color: #0f0; padding: 5px; font-size: 10px; pointer-events: none;
+            background: rgba(15, 15, 15, 0.9) !important; color: #c1a35f !important;
+            border: 1px solid #c1a35f !important; padding: 6px 12px !important;
+            border-radius: 4px; font-size: 11px !important; font-weight: bold !important;
+            text-transform: uppercase;
         }
     </style>
 </head>
 <body>
 
     <div class="search-container">
-        <input type="text" id="communitySearch" placeholder="Search Project (e.g. Al Waha)...">
+        <input type="text" id="communitySearch" placeholder="Search Plot or Project...">
     </div>
-    <div id="debug-log">System Status: Checking...</div>
     <div id="map"></div>
 
     <script src="dda_borders.js"></script>
-
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        const log = (msg) => document.getElementById('debug-log').innerText = "Status: " + msg;
+        const map = L.map('map', { zoomControl: false }).setView([25.02, 55.15], 11);
+        L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}').addTo(map);
 
-        // Check if data is actually present
-        if (typeof ddaData === 'undefined') {
-            log("ERROR: 'ddaData' variable not found. Check dda_borders.js start.");
-        } else {
-            log("Data loaded successfully.");
-            initMap();
-        }
+        const defaultStyle = {
+            color: "#c1a35f", weight: 1.5, fillColor: "#c1a35f", fillOpacity: 0.15, dashArray: '3'
+        };
 
-        function initMap() {
-            const map = L.map('map', { zoomControl: false }).setView([25.02, 55.15], 11);
-            L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}').addTo(map);
+        const hoverStyle = {
+            color: "#fff", weight: 3, fillColor: "#c1a35f", fillOpacity: 0.5, dashArray: ''
+        };
 
-            const futureLayer = L.geoJSON(ddaData, {
-                style: { color: "#c1a35f", weight: 1.5, fillColor: "#c1a35f", fillOpacity: 0.15, dashArray: '3' },
-                onEachFeature: function(feature, layer) {
-                    // Match the exact properties from your file
-                    const name = feature.properties.ProjectName || feature.properties.CommunityName || "DDA Area";
-                    layer.bindTooltip(name, { sticky: true, className: 'community-label' });
+        let futureLayer = L.geoJSON(ddaData, {
+            style: defaultStyle,
+            onEachFeature: function(feature, layer) {
+                const name = feature.properties.ProjectName || feature.properties.CommunityName || "DDA Plot";
+                layer.bindTooltip(name, { sticky: true, className: 'community-label' });
 
-                    layer.on({
-                        mouseover: (e) => { e.target.setStyle({ color: '#fff', fillOpacity: 0.4 }); },
-                        mouseout: (e) => { futureLayer.resetStyle(e.target); }
-                    });
-                }
-            }).addTo(map);
-
-            // Search Logic
-            document.getElementById('communitySearch').addEventListener('input', function(e) {
-                const query = e.target.value.toLowerCase().trim();
-                if (query.length < 2) {
-                    futureLayer.eachLayer(l => futureLayer.resetStyle(l));
-                    return;
-                }
-
-                let found = false;
-                futureLayer.eachLayer(function(layer) {
-                    const p = layer.feature.properties;
-                    const match = (p.ProjectName || "").toLowerCase().includes(query) || 
-                                  (p.CommunityName || "").toLowerCase().includes(query);
-                    
-                    if (match) {
-                        layer.setStyle({ color: '#fff', weight: 4, fillOpacity: 0.6 });
-                        if (!found) { map.fitBounds(layer.getBounds()); found = true; }
-                    } else {
-                        futureLayer.resetStyle(layer);
+                layer.on({
+                    mouseover: (e) => {
+                        // CRITICAL: We only set style for 'e.target' (the specific block touched)
+                        const target = e.target;
+                        target.setStyle(hoverStyle);
+                        target.bringToFront();
+                    },
+                    mouseout: (e) => {
+                        // CRITICAL: We only reset the specific block the mouse left
+                        futureLayer.resetStyle(e.target);
+                    },
+                    click: (e) => {
+                        map.flyToBounds(e.target.getBounds(), { padding: [100, 100] });
                     }
                 });
+            }
+        }).addTo(map);
+
+        // Search Logic: Still zooms to the specific plot found
+        document.getElementById('communitySearch').addEventListener('input', function(e) {
+            const query = e.target.value.toLowerCase().trim();
+            
+            // Reset everything first
+            futureLayer.eachLayer(l => futureLayer.resetStyle(l));
+            
+            if (query.length < 3) return;
+
+            futureLayer.eachLayer(function(layer) {
+                const p = layer.feature.properties;
+                const isMatch = (p.ProjectName || "").toLowerCase().includes(query) || 
+                                (p.CommunityName || "").toLowerCase().includes(query);
+                
+                if (isMatch) {
+                    layer.setStyle(hoverStyle);
+                    // Just zoom to the very first match to avoid confusion
+                    map.flyToBounds(layer.getBounds(), { padding: [150, 150] });
+                }
             });
-        }
+        });
     </script>
 </body>
 </html>
