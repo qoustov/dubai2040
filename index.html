@@ -3,16 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dubai Vision 2040 | Individual Plots</title>
+    <title>Dubai Vision 2040 | Exploded View</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
         #map { width: 100%; height: 100vh; }
-        .search-container { position: absolute; top: 20px; left: 20px; z-index: 1000; width: 300px; }
-        #communitySearch {
-            width: 100%; padding: 12px 20px; border-radius: 25px; border: 1px solid #c1a35f;
-            background: rgba(255, 255, 255, 0.95); outline: none;
-        }
         .community-label {
             background: rgba(0,0,0,0.8) !important; color: #fff !important;
             border: 1px solid #c1a35f !important; padding: 4px 8px !important;
@@ -22,9 +17,6 @@
 </head>
 <body>
 
-    <div class="search-container">
-        <input type="text" id="communitySearch" placeholder="Search...">
-    </div>
     <div id="map"></div>
 
     <script src="dda_borders.js"></script>
@@ -34,34 +26,50 @@
         const map = L.map('map', { zoomControl: false }).setView([25.02, 55.15], 11);
         L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}').addTo(map);
 
-        const defaultStyle = {
-            color: "#c1a35f", weight: 1, fillColor: "#c1a35f", fillOpacity: 0.1
-        };
+        const defaultStyle = { color: "#c1a35f", weight: 1, fillColor: "#c1a35f", fillOpacity: 0.1 };
+        const hoverStyle = { color: "#fff", weight: 3, fillColor: "#fff", fillOpacity: 0.4 };
 
-        const hoverStyle = {
-            color: "#fff", weight: 3, fillColor: "#fff", fillOpacity: 0.4
-        };
+        // STEP 1: Explode MultiPolygons into Individual Polygons
+        function explodeGeoJSON(data) {
+            let newFeatures = [];
+            data.features.forEach(feature => {
+                if (feature.geometry.type === 'MultiPolygon') {
+                    // Create a new separate feature for every single polygon in the group
+                    feature.geometry.coordinates.forEach((coords, index) => {
+                        newFeatures.push({
+                            type: "Feature",
+                            id: feature.id + "_part_" + index, // Give it a unique ID
+                            properties: { ...feature.properties }, // Keep original names
+                            geometry: { type: "Polygon", coordinates: coords }
+                        });
+                    });
+                } else {
+                    newFeatures.push(feature);
+                }
+            });
+            return { type: "FeatureCollection", features: newFeatures };
+        }
 
-        const futureLayer = L.geoJSON(ddaData, {
+        const explodedData = explodeGeoJSON(ddaData);
+
+        // STEP 2: Load the exploded data
+        const futureLayer = L.geoJSON(explodedData, {
             style: defaultStyle,
             onEachFeature: function(feature, layer) {
-                const name = feature.properties.ProjectName || "DDA Area";
-                layer.bindTooltip(name, { sticky: true, className: 'community-label' });
+                layer.bindTooltip(feature.properties.ProjectName || "DDA Area", { sticky: true, className: 'community-label' });
 
-                layer.on('mouseover', function(e) {
-                    // STOP PROPAGATION: Prevents the event from bubbling up to parents/groups
-                    L.DomEvent.stopPropagation(e);
-                    
-                    // Reset everyone first to ensure no "ghost" highlights
-                    futureLayer.eachLayer(l => futureLayer.resetStyle(l));
-
-                    // Highlight ONLY this specific layer object
-                    this.setStyle(hoverStyle);
-                    this.bringToFront();
-                });
-
-                layer.on('mouseout', function(e) {
-                    futureLayer.resetStyle(this);
+                layer.on({
+                    mouseover: function(e) {
+                        // Resets everyone else first
+                        futureLayer.eachLayer(l => futureLayer.resetStyle(l));
+                        
+                        // Highlight ONLY this single exploded piece
+                        this.setStyle(hoverStyle);
+                        this.bringToFront();
+                    },
+                    mouseout: function(e) {
+                        futureLayer.resetStyle(this);
+                    }
                 });
             }
         }).addTo(map);
