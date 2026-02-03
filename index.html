@@ -3,31 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dubai Vision 2040 | Precise View</title>
+    <title>Dubai Vision 2040 | Individual Plots</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
         #map { width: 100%; height: 100vh; }
-        
-        .search-container { position: absolute; top: 20px; left: 20px; z-index: 1000; width: 320px; }
+        .search-container { position: absolute; top: 20px; left: 20px; z-index: 1000; width: 300px; }
         #communitySearch {
-            width: 100%; padding: 14px 20px; border-radius: 30px; border: 1px solid #c1a35f;
-            background: rgba(255, 255, 255, 0.95); outline: none; box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+            width: 100%; padding: 12px 20px; border-radius: 25px; border: 1px solid #c1a35f;
+            background: rgba(255, 255, 255, 0.95); outline: none;
         }
-
-        /* Clean Tooltip - No background, just gold text */
         .community-label {
-            background: none !important; color: #fff !important;
-            border: none !important; font-weight: bold !important;
-            text-shadow: 2px 2px 4px #000; font-size: 12px !important;
-            box-shadow: none !important;
+            background: rgba(0,0,0,0.8) !important; color: #fff !important;
+            border: 1px solid #c1a35f !important; padding: 4px 8px !important;
+            font-size: 11px !important; border-radius: 3px;
         }
     </style>
 </head>
 <body>
 
     <div class="search-container">
-        <input type="text" id="communitySearch" placeholder="Search Plot...">
+        <input type="text" id="communitySearch" placeholder="Search...">
     </div>
     <div id="map"></div>
 
@@ -39,59 +35,36 @@
         L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}').addTo(map);
 
         const defaultStyle = {
-            color: "#c1a35f", weight: 1, fillColor: "#c1a35f", fillOpacity: 0.1, dashArray: ''
+            color: "#c1a35f", weight: 1, fillColor: "#c1a35f", fillOpacity: 0.1
         };
 
         const hoverStyle = {
-            color: "#00ffff", weight: 3, fillColor: "#00ffff", fillOpacity: 0.4, dashArray: ''
+            color: "#fff", weight: 3, fillColor: "#fff", fillOpacity: 0.4
         };
 
-        let futureLayer = L.geoJSON(ddaData, {
+        const futureLayer = L.geoJSON(ddaData, {
             style: defaultStyle,
             onEachFeature: function(feature, layer) {
-                const name = feature.properties.ProjectName || feature.properties.CommunityName || "DDA Plot";
-                
-                // Tooltip only appears on hover now (removed 'permanent' or 'sticky' issues)
-                layer.bindTooltip(name, { 
-                    direction: 'top', 
-                    className: 'community-label',
-                    opacity: 0.9 
+                const name = feature.properties.ProjectName || "DDA Area";
+                layer.bindTooltip(name, { sticky: true, className: 'community-label' });
+
+                layer.on('mouseover', function(e) {
+                    // STOP PROPAGATION: Prevents the event from bubbling up to parents/groups
+                    L.DomEvent.stopPropagation(e);
+                    
+                    // Reset everyone first to ensure no "ghost" highlights
+                    futureLayer.eachLayer(l => futureLayer.resetStyle(l));
+
+                    // Highlight ONLY this specific layer object
+                    this.setStyle(hoverStyle);
+                    this.bringToFront();
                 });
 
-                layer.on({
-                    mouseover: (e) => {
-                        const target = e.target;
-                        // Force only the single polygon under the mouse to change
-                        target.setStyle(hoverStyle);
-                        if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
-                            target.bringToFront();
-                        }
-                    },
-                    mouseout: (e) => {
-                        futureLayer.resetStyle(e.target);
-                    },
-                    click: (e) => {
-                        map.flyToBounds(e.target.getBounds(), { padding: [100, 100] });
-                    }
+                layer.on('mouseout', function(e) {
+                    futureLayer.resetStyle(this);
                 });
             }
         }).addTo(map);
-
-        // Search logic zooms to the specific plot found
-        document.getElementById('communitySearch').addEventListener('input', function(e) {
-            const query = e.target.value.toLowerCase().trim();
-            futureLayer.eachLayer(l => futureLayer.resetStyle(l));
-            
-            if (query.length < 3) return;
-
-            futureLayer.eachLayer(function(layer) {
-                const p = layer.feature.properties;
-                if ((p.ProjectName || "").toLowerCase().includes(query)) {
-                    layer.setStyle(hoverStyle);
-                    map.flyToBounds(layer.getBounds(), { padding: [150, 150] });
-                }
-            });
-        });
     </script>
 </body>
 </html>
