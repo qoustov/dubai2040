@@ -49,11 +49,13 @@
 <body>
 
     <div class="search-container">
-        <input type="text" id="communitySearch" placeholder="Find Community (e.g. Al Waha)...">
+        <input type="text" id="communitySearch" placeholder="Search (e.g. Al Waha, Palm)...">
         <span id="clearSearch" class="clear-btn">&times;</span>
     </div>
 
     <div id="map"></div>
+
+    <script src="dda_borders.js"></script>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -62,86 +64,72 @@
         const map = L.map('map', { zoomControl: false }).setView([25.02, 55.15], 11);
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-        // 2. Satellite Layer
+        // 2. Satellite Background
         L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}').addTo(map);
 
-        let futureLayer;
-
-        // Default Style
         const defaultStyle = {
-            color: "#c1a35f",
-            weight: 1.5,
-            fillColor: "#c1a35f",
-            fillOpacity: 0.15,
-            dashArray: '3'
+            color: "#c1a35f", weight: 1.5, fillColor: "#c1a35f", fillOpacity: 0.15, dashArray: '3'
         };
 
-        // 3. Fetch and Load the JSON
-        fetch('dda_borders.json')
-            .then(res => res.json())
-            .then(data => {
-                futureLayer = L.geoJSON(data, {
-                    style: defaultStyle,
-                    onEachFeature: function(feature, layer) {
-                        // Keys match your specific file content
-                        const name = feature.properties.ProjectName || 
-                                     feature.properties.CommunityName || 
-                                     "Future Zone";
+        // 3. Process the ddaData (loaded from your .js file)
+        const futureLayer = L.geoJSON(ddaData, {
+            style: defaultStyle,
+            onEachFeature: function(feature, layer) {
+                // Mapping the specific names from your data
+                const name = feature.properties.ProjectName || feature.properties.CommunityName || "Vision 2040 Area";
 
-                        layer.bindTooltip(name, { sticky: true, className: 'community-label' });
+                layer.bindTooltip(name, { sticky: true, className: 'community-label' });
 
-                        layer.on({
-                            mouseover: (e) => { 
-                                e.target.setStyle({ fillOpacity: 0.4, color: '#fff', weight: 3 }); 
-                            },
-                            mouseout: (e) => { 
-                                futureLayer.resetStyle(e.target); 
-                            },
-                            click: (e) => { 
-                                map.flyToBounds(e.target.getBounds(), { padding: [50, 50] }); 
-                            }
-                        });
+                layer.on({
+                    mouseover: (e) => { 
+                        e.target.setStyle({ fillOpacity: 0.4, color: '#fff', weight: 3 }); 
+                    },
+                    mouseout: (e) => { 
+                        futureLayer.resetStyle(e.target); 
+                    },
+                    click: (e) => { 
+                        map.flyToBounds(e.target.getBounds(), { padding: [50, 50] }); 
                     }
-                }).addTo(map);
-            });
+                });
+            }
+        }).addTo(map);
 
-        // 4. Advanced Search Logic
+        // 4. Smart Search Logic
         const searchInput = document.getElementById('communitySearch');
         const clearBtn = document.getElementById('clearSearch');
 
         searchInput.addEventListener('input', function(e) {
-            const query = e.target.value.toLowerCase();
-            
-            // Show/Hide Clear Button
+            const query = e.target.value.toLowerCase().trim();
             clearBtn.style.display = query.length > 0 ? 'block' : 'none';
 
-            if (query.length < 3) {
-                if (futureLayer) futureLayer.eachLayer(l => futureLayer.resetStyle(l));
+            // Reset all styles if query is empty or too short
+            if (query.length < 2) {
+                futureLayer.eachLayer(l => futureLayer.resetStyle(l));
                 return;
             }
 
-            let found = false;
+            let firstMatch = null;
+
             futureLayer.eachLayer(function(layer) {
                 const props = layer.feature.properties;
                 const pName = (props.ProjectName || "").toLowerCase();
                 const cName = (props.CommunityName || "").toLowerCase();
                 
                 if (pName.includes(query) || cName.includes(query)) {
-                    if (!found) {
-                        map.flyToBounds(layer.getBounds(), { padding: [100, 100], duration: 1.5 });
-                        found = true;
-                    }
-                    // Highlight the match
+                    if (!firstMatch) firstMatch = layer;
                     layer.setStyle({ color: '#fff', weight: 5, fillOpacity: 0.7 });
                     layer.bringToFront();
                 } else {
-                    // Revert non-matches
                     futureLayer.resetStyle(layer);
                 }
             });
+
+            if (firstMatch) {
+                map.flyToBounds(firstMatch.getBounds(), { padding: [100, 100], duration: 1.5 });
+            }
         });
 
-        // Clear Search Function
+        // Clear Function
         clearBtn.addEventListener('click', () => {
             searchInput.value = '';
             clearBtn.style.display = 'none';
