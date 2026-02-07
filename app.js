@@ -38,6 +38,31 @@ let currentTooltipLayer = null;
 
 const masterplanOverlayLayer = L.layerGroup();
 const overlaysByProjectId = new Map();
+const projectBoundsById = new Map();
+
+function extendBoundsFromGeoJSONCoordinates(bounds, coordinates) {
+    if (!Array.isArray(coordinates) || coordinates.length === 0) return;
+    if (typeof coordinates[0] === "number" && typeof coordinates[1] === "number") {
+        // GeoJSON order is [lng, lat]
+        bounds.extend([coordinates[1], coordinates[0]]);
+        return;
+    }
+    coordinates.forEach((nested) => extendBoundsFromGeoJSONCoordinates(bounds, nested));
+}
+
+function buildProjectBoundsIndex(featureCollection) {
+    featureCollection.features.forEach((feature) => {
+        const pid = feature?.properties?.ProjectID;
+        const coordinates = feature?.geometry?.coordinates;
+        if (!pid || !coordinates) return;
+
+        const mergedBounds = projectBoundsById.get(pid) || L.latLngBounds([]);
+        extendBoundsFromGeoJSONCoordinates(mergedBounds, coordinates);
+        projectBoundsById.set(pid, mergedBounds);
+    });
+}
+
+buildProjectBoundsIndex(precisionData);
 
 function clearHighlight() {
     if (!currentHighlightedLayer) return;
@@ -88,7 +113,10 @@ const futureLayer = L.geoJSON(precisionData, {
 
         if (masterplans && masterplans[pid] && !overlaysByProjectId.has(pid)) {
             const config = masterplans[pid];
-            const bounds = config.bounds ? L.latLngBounds(config.bounds) : layer.getBounds();
+            const bounds = config.bounds
+                ? L.latLngBounds(config.bounds)
+                : (projectBoundsById.get(pid) || layer.getBounds());
+            if (!bounds || !bounds.isValid()) return;
             const imageOverlay = L.imageOverlay(config.imageUrl, bounds, {
                 opacity: typeof config.opacity === "number" ? config.opacity : 0.9,
                 interactive: false,
