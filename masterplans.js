@@ -4,12 +4,16 @@ const masterplans = {
     // Example Entry (linked to "AL WAHA" for testing)
     "a0DD000000E6W9eMAF": {
         imageUrl: "masterplans/placeholder_waha.jpg",
-        // Optional manual bounds if the image doesn't match the polygon bbox exactly
-        // bounds: [[25.0, 55.0], [25.1, 55.1]]
+        // Manual project bounds: [[south, west], [north, east]]
+        bounds: [[25.026781520435005, 55.283966042000586], [25.031373735936743, 55.289331072417411]],
+        // Stretch image to fully fill project extent before polygon clipping.
+        imageFit: "none"
     },
     // THE LAGOONS (Dubai Creek Harbour)
-    "a0DD000000E65yZMAR": {
+    "a0D6F00000ec7SeUAI": {
         imageUrl: "masterplans/emaar_creek_harbour.jpg",
-        opacity: 0.9
+        bounds: [[25.186210131472652, 55.339309615036349], [25.211093027431509, 55.369726499571591]],
+        opacity: 0.9,
+        imageFit: "none"
     }
 };

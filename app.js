@@ -116,7 +116,7 @@ function buildClipPathData(bounds, polygons) {
     return segments.join(" ");
 }
 
-function createClippedSvgOverlay(pid, imageUrl, bounds, polygons) {
+function createClippedSvgOverlay(pid, imageUrl, bounds, polygons, imagePreserveAspectRatio) {
     if (!bounds || !bounds.isValid()) return null;
     if (!imageUrl || !Array.isArray(polygons) || polygons.length === 0) return null;
 
@@ -150,7 +150,7 @@ function createClippedSvgOverlay(pid, imageUrl, bounds, polygons) {
     image.setAttribute("y", "0");
     image.setAttribute("width", "1000");
     image.setAttribute("height", "1000");
-    image.setAttribute("preserveAspectRatio", "xMidYMid slice");
+    image.setAttribute("preserveAspectRatio", imagePreserveAspectRatio || "none");
     image.setAttribute("href", imageUrl);
     image.setAttributeNS(xlinkNS, "href", imageUrl);
     image.setAttribute("clip-path", `url(#${clipId})`);
@@ -214,7 +214,13 @@ const futureLayer = L.geoJSON(precisionData, {
             if (!bounds || !bounds.isValid()) return;
 
             const polygons = projectPolygonsById.get(pid) || [feature.geometry.coordinates];
-            const svgElement = createClippedSvgOverlay(pid, config.imageUrl, bounds, polygons);
+            const svgElement = createClippedSvgOverlay(
+                pid,
+                config.imageUrl,
+                bounds,
+                polygons,
+                config.imageFit
+            );
             if (!svgElement) return;
 
             const imageOverlay = L.svgOverlay(svgElement, bounds, {
