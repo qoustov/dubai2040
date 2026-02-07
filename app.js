@@ -64,6 +64,22 @@ function buildProjectBoundsIndex(featureCollection) {
 
 buildProjectBoundsIndex(precisionData);
 
+function scaleBounds(bounds, scaleFactor) {
+    if (!bounds || !bounds.isValid()) return bounds;
+    if (typeof scaleFactor !== "number" || !Number.isFinite(scaleFactor) || scaleFactor <= 0 || scaleFactor === 1) {
+        return bounds;
+    }
+
+    const center = bounds.getCenter();
+    const latHalf = (bounds.getNorth() - bounds.getSouth()) / 2;
+    const lngHalf = (bounds.getEast() - bounds.getWest()) / 2;
+
+    return L.latLngBounds(
+        [center.lat - (latHalf * scaleFactor), center.lng - (lngHalf * scaleFactor)],
+        [center.lat + (latHalf * scaleFactor), center.lng + (lngHalf * scaleFactor)]
+    );
+}
+
 function clearHighlight() {
     if (!currentHighlightedLayer) return;
     futureLayer.resetStyle(currentHighlightedLayer);
@@ -113,9 +129,10 @@ const futureLayer = L.geoJSON(precisionData, {
 
         if (masterplans && masterplans[pid] && !overlaysByProjectId.has(pid)) {
             const config = masterplans[pid];
-            const bounds = config.bounds
+            const baseBounds = config.bounds
                 ? L.latLngBounds(config.bounds)
                 : (projectBoundsById.get(pid) || layer.getBounds());
+            const bounds = scaleBounds(baseBounds, config.scale);
             if (!bounds || !bounds.isValid()) return;
             const imageOverlay = L.imageOverlay(config.imageUrl, bounds, {
                 opacity: typeof config.opacity === "number" ? config.opacity : 0.9,
