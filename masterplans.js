@@ -4,8 +4,6 @@ const masterplans = {
     // Example Entry (linked to "AL WAHA" for testing)
     "a0DD000000E6W9eMAF": {
         imageUrl: "masterplans/placeholder_waha.jpg",
-        // Temporary visual scale-up because source geometry for this ID is a small parcel.
-        scale: 2.5,
         // Optional manual bounds if the image doesn't match the polygon bbox exactly
         // bounds: [[25.0, 55.0], [25.1, 55.1]]
     },

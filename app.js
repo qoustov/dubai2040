@@ -39,6 +39,7 @@ let currentTooltipLayer = null;
 const masterplanOverlayLayer = L.layerGroup();
 const overlaysByProjectId = new Map();
 const projectBoundsById = new Map();
+const projectPolygonsById = new Map();
 
 function extendBoundsFromGeoJSONCoordinates(bounds, coordinates) {
     if (!Array.isArray(coordinates) || coordinates.length === 0) return;
@@ -50,34 +51,112 @@ function extendBoundsFromGeoJSONCoordinates(bounds, coordinates) {
     coordinates.forEach((nested) => extendBoundsFromGeoJSONCoordinates(bounds, nested));
 }
 
-function buildProjectBoundsIndex(featureCollection) {
+function addProjectPolygon(pid, polygonCoordinates) {
+    const polygons = projectPolygonsById.get(pid) || [];
+    polygons.push(polygonCoordinates);
+    projectPolygonsById.set(pid, polygons);
+}
+
+function buildProjectGeometryIndex(featureCollection) {
     featureCollection.features.forEach((feature) => {
         const pid = feature?.properties?.ProjectID;
-        const coordinates = feature?.geometry?.coordinates;
-        if (!pid || !coordinates) return;
+        const geometry = feature?.geometry;
+        const coordinates = geometry?.coordinates;
+        if (!pid || !geometry || !coordinates) return;
 
-        const mergedBounds = projectBoundsById.get(pid) || L.latLngBounds([]);
-        extendBoundsFromGeoJSONCoordinates(mergedBounds, coordinates);
-        projectBoundsById.set(pid, mergedBounds);
+        if (geometry.type === "Polygon") {
+            const mergedBounds = projectBoundsById.get(pid) || L.latLngBounds([]);
+            extendBoundsFromGeoJSONCoordinates(mergedBounds, coordinates);
+            projectBoundsById.set(pid, mergedBounds);
+            addProjectPolygon(pid, coordinates);
+            return;
+        }
+
+        if (geometry.type === "MultiPolygon") {
+            const mergedBounds = projectBoundsById.get(pid) || L.latLngBounds([]);
+            coordinates.forEach((polygonCoordinates) => {
+                extendBoundsFromGeoJSONCoordinates(mergedBounds, polygonCoordinates);
+                addProjectPolygon(pid, polygonCoordinates);
+            });
+            projectBoundsById.set(pid, mergedBounds);
+        }
     });
 }
 
-buildProjectBoundsIndex(precisionData);
+buildProjectGeometryIndex(precisionData);
 
-function scaleBounds(bounds, scaleFactor) {
-    if (!bounds || !bounds.isValid()) return bounds;
-    if (typeof scaleFactor !== "number" || !Number.isFinite(scaleFactor) || scaleFactor <= 0 || scaleFactor === 1) {
-        return bounds;
-    }
+function toSvgPoint(bounds, coord) {
+    const lng = coord[0];
+    const lat = coord[1];
 
-    const center = bounds.getCenter();
-    const latHalf = (bounds.getNorth() - bounds.getSouth()) / 2;
-    const lngHalf = (bounds.getEast() - bounds.getWest()) / 2;
+    const west = bounds.getWest();
+    const east = bounds.getEast();
+    const south = bounds.getSouth();
+    const north = bounds.getNorth();
 
-    return L.latLngBounds(
-        [center.lat - (latHalf * scaleFactor), center.lng - (lngHalf * scaleFactor)],
-        [center.lat + (latHalf * scaleFactor), center.lng + (lngHalf * scaleFactor)]
-    );
+    const width = Math.max(east - west, 1e-12);
+    const height = Math.max(north - south, 1e-12);
+
+    const x = ((lng - west) / width) * 1000;
+    const y = ((north - lat) / height) * 1000;
+    return `${x.toFixed(3)} ${y.toFixed(3)}`;
+}
+
+function buildClipPathData(bounds, polygons) {
+    const segments = [];
+    polygons.forEach((polygon) => {
+        if (!Array.isArray(polygon)) return;
+        polygon.forEach((ring) => {
+            if (!Array.isArray(ring) || ring.length < 3) return;
+            const points = ring.map((coord) => toSvgPoint(bounds, coord));
+            if (points.length < 3) return;
+            segments.push(`M ${points.join(" L ")} Z`);
+        });
+    });
+    return segments.join(" ");
+}
+
+function createClippedSvgOverlay(pid, imageUrl, bounds, polygons) {
+    if (!bounds || !bounds.isValid()) return null;
+    if (!imageUrl || !Array.isArray(polygons) || polygons.length === 0) return null;
+
+    const pathData = buildClipPathData(bounds, polygons);
+    if (!pathData) return null;
+
+    const svgNS = "http://www.w3.org/2000/svg";
+    const xlinkNS = "http://www.w3.org/1999/xlink";
+    const safePid = String(pid || "masterplan").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const clipId = `mp_clip_${safePid}`;
+
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("xmlns", svgNS);
+    svg.setAttribute("viewBox", "0 0 1000 1000");
+    svg.setAttribute("preserveAspectRatio", "none");
+
+    const defs = document.createElementNS(svgNS, "defs");
+    const clipPath = document.createElementNS(svgNS, "clipPath");
+    clipPath.setAttribute("id", clipId);
+
+    const clipPathShape = document.createElementNS(svgNS, "path");
+    clipPathShape.setAttribute("d", pathData);
+    clipPathShape.setAttribute("fill", "#fff");
+    clipPathShape.setAttribute("fill-rule", "evenodd");
+    clipPath.appendChild(clipPathShape);
+    defs.appendChild(clipPath);
+    svg.appendChild(defs);
+
+    const image = document.createElementNS(svgNS, "image");
+    image.setAttribute("x", "0");
+    image.setAttribute("y", "0");
+    image.setAttribute("width", "1000");
+    image.setAttribute("height", "1000");
+    image.setAttribute("preserveAspectRatio", "xMidYMid slice");
+    image.setAttribute("href", imageUrl);
+    image.setAttributeNS(xlinkNS, "href", imageUrl);
+    image.setAttribute("clip-path", `url(#${clipId})`);
+    svg.appendChild(image);
+
+    return svg;
 }
 
 function clearHighlight() {
@@ -129,16 +208,20 @@ const futureLayer = L.geoJSON(precisionData, {
 
         if (masterplans && masterplans[pid] && !overlaysByProjectId.has(pid)) {
             const config = masterplans[pid];
-            const baseBounds = config.bounds
+            const bounds = config.bounds
                 ? L.latLngBounds(config.bounds)
                 : (projectBoundsById.get(pid) || layer.getBounds());
-            const bounds = scaleBounds(baseBounds, config.scale);
             if (!bounds || !bounds.isValid()) return;
-            const imageOverlay = L.imageOverlay(config.imageUrl, bounds, {
+
+            const polygons = projectPolygonsById.get(pid) || [feature.geometry.coordinates];
+            const svgElement = createClippedSvgOverlay(pid, config.imageUrl, bounds, polygons);
+            if (!svgElement) return;
+
+            const imageOverlay = L.svgOverlay(svgElement, bounds, {
                 opacity: typeof config.opacity === "number" ? config.opacity : 0.9,
-                interactive: false,
-                zIndex: 100
+                interactive: false
             });
+
             overlaysByProjectId.set(pid, imageOverlay);
             masterplanOverlayLayer.addLayer(imageOverlay);
         }
